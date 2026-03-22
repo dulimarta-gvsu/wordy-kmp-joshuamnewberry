@@ -1,4 +1,3 @@
-import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -10,65 +9,67 @@ plugins {
 }
 
 kotlin {
+    compilerOptions {
+        freeCompilerArgs.add("-Xexpect-actual-classes")
+    }
+
     androidTarget {
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
         }
     }
-    
-    sourceSets {
-        androidMain.dependencies {
-            implementation(libs.compose.uiToolingPreview)
-            implementation(libs.androidx.activity.compose)
-        }
-        commonMain.dependencies {
-            implementation(libs.compose.runtime)
-            implementation(libs.compose.foundation)
-            implementation(libs.compose.material3)
-            implementation(libs.compose.ui)
-            implementation(libs.compose.components.resources)
-            implementation(libs.compose.uiToolingPreview)
-            implementation(libs.androidx.lifecycle.viewmodelCompose)
-            implementation(libs.androidx.lifecycle.runtimeCompose)
-            implementation(projects.shared)
-            implementation("org.jetbrains.androidx.navigation:navigation-compose:2.9.1")
-        }
-        commonTest.dependencies {
-            implementation(libs.kotlin.test)
+
+    listOf(
+        iosArm64(),
+        iosSimulatorArm64()
+    ).forEach { iosTarget ->
+        iosTarget.binaries.framework {
+            baseName = "Shared"
+            isStatic = true
+            export("io.github.hoc081098:kmp-viewmodel:0.8.0")
         }
     }
 
+    sourceSets {
+        commonMain.dependencies {
+            api("io.github.hoc081098:kmp-viewmodel:0.8.0")
+            implementation("org.jetbrains.androidx.navigation:navigation-compose:2.8.0-alpha10")
+            implementation(libs.compose.runtime)
+            implementation(libs.compose.foundation)
+            implementation(libs.compose.ui)
+            implementation(libs.compose.material3)
+            implementation(libs.compose.components.resources)
+            implementation(compose.components.uiToolingPreview)
+            implementation(compose.preview)
+        }
 
+        androidMain.dependencies {
+            implementation(compose.uiTooling)
+        }
+    }
 }
 
 android {
     namespace = "edu.gvsu.cis.kmp_wordy"
-    compileSdk = libs.versions.android.compileSdk.get().toInt()
+
+    // THIS is the line the error is complaining about
+    compileSdk = 35
 
     defaultConfig {
+        // Required for an Android Application
         applicationId = "edu.gvsu.cis.kmp_wordy"
-        minSdk = libs.versions.android.minSdk.get().toInt()
-        targetSdk = libs.versions.android.targetSdk.get().toInt()
+        minSdk = 24
+        targetSdk = 34
         versionCode = 1
         versionName = "1.0"
     }
-    packaging {
-        resources {
-            excludes += "/META-INF/{AL2.0,LGPL2.1}"
-        }
+
+    buildFeatures {
+        compose = true
     }
-    buildTypes {
-        getByName("release") {
-            isMinifyEnabled = false
-        }
-    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
 }
-
-dependencies {
-    debugImplementation(libs.compose.uiTooling)
-}
-

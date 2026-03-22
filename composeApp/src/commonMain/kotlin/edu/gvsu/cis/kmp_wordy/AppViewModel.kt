@@ -5,7 +5,6 @@ import com.hoc081098.kmp.viewmodel.wrapper.NonNullStateFlowWrapper
 import com.hoc081098.kmp.viewmodel.wrapper.wrap
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 
@@ -50,6 +49,13 @@ val letterPoint = mapOf('A' to 1, 'B' to 3, 'C' to 3, 'D' to 2,
     'E' to 1, 'F' to 4, 'G' to 2, 'H' to 4, 'I' to 1, 'J' to 8, 'K' to 5, 'L' to 1,
     'M' to 3, 'N' to 1, 'O' to 1, 'P' to 3, 'Q' to 10, 'R' to 1, 'S' to 1, 'T' to 1,
     'U' to 1, 'V' to 4, 'W' to 4, 'X' to 8, 'Y' to 4, 'Z' to 10)
+
+data class GameSession(
+    val word: String,
+    val points: Int,
+    val numMoves: Int,
+    val time: Long
+)
 
 class AppViewModel: ViewModel() {
     private val _sourceLetters = MutableStateFlow(emptyList<Letter?>())

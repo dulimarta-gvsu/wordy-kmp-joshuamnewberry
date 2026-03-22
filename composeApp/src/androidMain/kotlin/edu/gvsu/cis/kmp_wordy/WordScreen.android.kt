@@ -10,8 +10,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
@@ -38,11 +42,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+
+@Composable
+actual fun WordScreen(viewModel: AppViewModel) {
+    GameScreen(Modifier, viewModel)
+}
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
@@ -50,41 +58,71 @@ fun GameScreen(modifier: Modifier = Modifier, viewModel: AppViewModel) {
     val stockLetters by viewModel.sourceLetters.collectAsState()
     val arrangedLetters by viewModel.targetLetters.collectAsState()
 
-    Box(
-        contentAlignment = Alignment.Center,
+    val currentScore by viewModel.currentScore.collectAsState()
+    val totalScore by viewModel.totalScore.collectAsState()
+    val numWords by viewModel.numWords.collectAsState()
+
+    Column(
+        verticalArrangement = Arrangement.Top,
+        horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
             .fillMaxSize()
-            .padding(top = 24.dp)
+            .padding(top = 100.dp)
     ) {
 
-        Button(
-            modifier = Modifier.align(Alignment.TopCenter),
-            onClick = {
-                viewModel.selectRandomLetters()
-            },
+        Text("Current Word Score: $currentScore", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Text("Total Score: $totalScore", fontSize = 16.sp)
+        Text("Words Built: $numWords", fontSize = 16.sp)
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Row(
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
         ) {
-            Text("New Game")
+            Button(onClick = { viewModel.shuffleLetters() }) {
+                Text("Reshuffle")
+            }
+            Button(
+                onClick = {
+                    if(viewModel.isValidWord()) {
+                        viewModel.validWordCreated()
+                    }
+                },
+                enabled = currentScore > 0 // Button enabled only when score is non-zero
+            ) {
+                Text("Record Word")
+            }
         }
 
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            LetterGroup(letters = arrangedLetters, groupId = "Top") {
-                viewModel.rearrangeLetters(Origin.CenterBox, it.filterNotNull())
-            }
-            LetterGroup(letters = stockLetters, groupId = "Bottom") {
-                println("Bottom box rearrange $it")
-                viewModel.rearrangeLetters(Origin.Stock, it.filterNotNull())
-            }
+        Spacer(modifier = Modifier.height(32.dp))
+
+        LetterGroup(letters = arrangedLetters, groupId = "Top") {
+            viewModel.rearrangeLetters(Origin.CenterBox, it.filterNotNull())
+        }
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        LetterGroup(letters = stockLetters, groupId = "Bottom") {
+            viewModel.rearrangeLetters(Origin.Stock, it.filterNotNull())
+        }
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        Button(onClick = { viewModel.selectRandomLetters() }) {
+            Text("Generate New Letters")
         }
     }
 }
 
 @Composable
-fun BigLetter(modifier: Modifier = Modifier, letter: Char?, cellSize: Dp = 48.dp) {
+fun BigLetter(modifier: Modifier = Modifier, letter: Letter?, cellSize: Dp = 48.dp) {
+    val smallTextSize = (cellSize.value * 0.2125).sp
+    val largeTextSize = (cellSize.value * 0.625).sp
+
+    val edgePadding = 2.375.dp
+
     Box(
-        contentAlignment = Alignment.Center,
         modifier = modifier
             .size(cellSize)
             .border(width = 1.dp, color = Color.Black, shape = RoundedCornerShape(8.dp))
@@ -93,13 +131,35 @@ fun BigLetter(modifier: Modifier = Modifier, letter: Char?, cellSize: Dp = 48.dp
                 shape = RoundedCornerShape(8.dp)
             )
     ) {
+        // Multiplier text
         Text(
-            letter?.toString() ?: "",
-            fontSize = (cellSize * 0.7f).value.sp,
-            textAlign = TextAlign.Center
+            text = when {
+                (letter?.letterMultiplier ?: 1) != 1 -> "${letter!!.letterMultiplier}L"
+                (letter?.wordMultiplier ?: 1) != 1 -> "${letter!!.wordMultiplier}W"
+                else -> ""
+            },
+            fontSize = smallTextSize,
+            lineHeight = smallTextSize, // Forces the bounding box to wrap tightly
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(start = edgePadding, top = edgePadding)
+        )
+        // Main letter text
+        Text(
+            text = (letter?.text ?: "").toString(),
+            fontSize = largeTextSize,
+            modifier = Modifier.align(Alignment.Center)
+        )
+        // Point value text
+        Text(
+            text = (letter?.point ?: "").toString(),
+            fontSize = smallTextSize,
+            lineHeight = smallTextSize, // Forces the bounding box to wrap tightly
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = edgePadding, bottom = edgePadding)
         )
     }
-
 }
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
@@ -221,30 +281,23 @@ fun LetterGroup(
                     mutLetters,
                     key = { pos, item -> "$pos-" + (item?.text ?: "#") }) { pos, lx ->
                     BigLetter(
-                        letter = lx?.text, cellSize = letterSize.coerceAtMost(80.dp),
+                        letter = lx, cellSize = letterSize.coerceAtMost(80.dp),
                         modifier = Modifier
                             .dragAndDropSource(transferData =  {
-                            startDragIndex = pos
-                            draggedLetter = lx
-                            mutLetters[pos] = null
-                            emptyCellIndex = pos
-                            DragAndDropTransferData(
-                                clipData = ClipData.newPlainText(
-                                    "",
-                                    // Some hack here: unpack the object details as a string
-                                    "${lx?.text ?: "$"}/${lx?.point}"
+                                startDragIndex = pos
+                                draggedLetter = lx
+                                mutLetters[pos] = null
+                                emptyCellIndex = pos
+                                DragAndDropTransferData(
+                                    clipData = ClipData.newPlainText(
+                                        "",
+                                        // Some hack here: unpack the object details as a string
+                                        "${lx?.text ?: "$"}/${lx?.point}"
+                                    )
                                 )
-                            )
-                        }))
+                            }))
                 }
             }
         }
     }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GameScreenPreview() {
-    val appVM = AppViewModel()
-    GameScreen(viewModel = appVM)
 }

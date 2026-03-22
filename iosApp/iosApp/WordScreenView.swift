@@ -1,10 +1,14 @@
 import SwiftUI
-import Shared
+import composeApp
 
 extension Letter: Identifiable {}
 
 struct ContentView: View {
-    @StateObject var vm = iosAppViewModel(commonVm: AppViewModel())
+    @StateObject var vm: iosAppViewModel
+
+    init(viewModel: iosAppViewModel) {
+        self._vm = StateObject(wrappedValue: iosAppViewModel(commonVm: AppViewModel()))
+    }
     @State var letterSize: Int = 40
 
     var body: some View {
