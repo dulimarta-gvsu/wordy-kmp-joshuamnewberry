@@ -13,19 +13,22 @@ import androidx.navigation.compose.rememberNavController
 fun App() {
     MaterialTheme {
         val navController = rememberNavController()
-
         val vm: AppViewModel = remember { AppViewModel() }
 
         NavHost(navController = navController, startDestination = "main") {
-            /*composable("main") {
+            composable("main") {
+                // MainScreen is the Parent
                 MainScreen(
-                    onNavigateToGame = { navController.navigate("game") },
+                    viewModel = vm,
                     onNavigateToSettings = { navController.navigate("settings") },
                     onNavigateToStats = { navController.navigate("stats") }
                 )
-            }*/
-            composable("main") {
-                WordScreen(viewModel = vm)
+            }
+            composable("settings") {
+                SettingsScreen(viewModel = vm, onBack = { navController.popBackStack(); vm.selectRandomLetters() })
+            }
+            composable("stats") {
+                StatsScreen(viewModel = vm, onBack = { navController.popBackStack(); vm.selectRandomLetters() })
             }
         }
     }

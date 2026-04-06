@@ -3,10 +3,15 @@ package edu.gvsu.cis.kmp_wordy
 import com.hoc081098.kmp.viewmodel.ViewModel
 import com.hoc081098.kmp.viewmodel.wrapper.NonNullStateFlowWrapper
 import com.hoc081098.kmp.viewmodel.wrapper.wrap
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 data class Letter(val text: Char = '$', val point: Int = 0, val letterMultiplier: Int = 1, val wordMultiplier: Int = 1)
 
@@ -62,13 +67,13 @@ class AppViewModel: ViewModel() {
     val sourceLetters:NonNullStateFlowWrapper<List<Letter?>> = _sourceLetters.stateIn(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,
-        initialValue = emptyList<Letter?>())
+        initialValue = emptyList<Letter>())
         .wrap()
     private val _targetLetters = MutableStateFlow(emptyList<Letter?>())
     val targetLetters:NonNullStateFlowWrapper<List<Letter?>> = _targetLetters.stateIn(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,
-        initialValue = emptyList<Letter?>())
+        initialValue = emptyList<Letter>())
         .wrap()
 
     private val _totalScore = MutableStateFlow(0)
@@ -84,6 +89,20 @@ class AppViewModel: ViewModel() {
         initialValue = 0)
         .wrap()
 
+    private val _sessionList = MutableStateFlow(emptyList<GameSession>())
+    val sessionList:NonNullStateFlowWrapper<List<GameSession>> = _sessionList.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = emptyList())
+        .wrap()
+
+    private val _numMoves = MutableStateFlow(0)
+    val numMoves:NonNullStateFlowWrapper<Int> = _numMoves.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = 0)
+        .wrap()
+
     private val _numWords = MutableStateFlow(0)
     val numWords:NonNullStateFlowWrapper<Int> = _numWords.stateIn(
         scope = viewModelScope,
@@ -91,19 +110,61 @@ class AppViewModel: ViewModel() {
         initialValue = 0)
         .wrap()
 
-    private val _successfulWords = mutableListOf<String>()
+    private val _backgroundColor = MutableStateFlow(listOf(0f,255f,0f))
+    val backgroundColor:NonNullStateFlowWrapper<List<Float>> = _backgroundColor.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = listOf(0f,255f,0f))
+        .wrap()
+
+    private val _minimumWordLength = MutableStateFlow(2)
+    val minimumWordLength:NonNullStateFlowWrapper<Int> = _minimumWordLength.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = 2)
+        .wrap()
+
+    private val _maximumWordLength = MutableStateFlow(10)
+    val maximumWordLength:NonNullStateFlowWrapper<Int> = _maximumWordLength.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = 10)
+        .wrap()
+
+    private val _numberOfLetters = MutableStateFlow(10)
+    val numberOfLetters:NonNullStateFlowWrapper<Int> = _numberOfLetters.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = 10)
+        .wrap()
+
+    private var _startTime: TimeMark = TimeSource.Monotonic.markNow()
+    private val _currentTime = MutableStateFlow(currentTime())
+    val currentTime:NonNullStateFlowWrapper<Long> = _currentTime.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = currentTime())
+        .wrap()
+
+    private var _sortState: Int = 0
 
     init {
         selectRandomLetters()
+        viewModelScope.launch {
+            while (true) {
+                delay(499)
+                _currentTime.value = currentTime()
+            }
+        }
     }
 
     fun selectRandomLetters() {
         _sourceLetters.update {
             // 60% vowels, 40% consonants
-            val vowels = (1..6).map {
+            val vowels = (1..(.6*_numberOfLetters.value).roundToInt()).map {
                 "AEIOU".random()
             }
-            val consonants = (1..4).map {
+            val consonants = (1..(.4*_numberOfLetters.value).roundToInt()).map {
                 "BCDFGHJKLMNPQRSTVWXYZ".random()
             }
             (vowels + consonants).map {
@@ -114,13 +175,17 @@ class AppViewModel: ViewModel() {
                     letterMultiplier = if (multiplierEnabled == 1 && letterEnabled == 1) listOf(2, 2, 3, 3, 4).random() else 1,
                     wordMultiplier = if (multiplierEnabled == 1 && letterEnabled == 0) listOf(2, 2, 3, 3, 4).random() else 1
                 )
-            }.shuffled()
+            }
         }
         _targetLetters.update { emptyList() }
         _currentScore.update { 0 }
+        _numMoves.update { 0 }
+        resetTime()
     }
 
     fun rearrangeLetters(group: Origin, arr: List<Letter>) {
+        val sourceBackup = _sourceLetters.value.toList()
+        val targetBackup = _targetLetters.value.toList()
         when (group) {
             Origin.Stock -> {
                 _sourceLetters.update { arr }
@@ -129,6 +194,11 @@ class AppViewModel: ViewModel() {
                 _targetLetters.update { arr }
                 calculateScore()
             }
+        }
+        if((sourceBackup != _sourceLetters.value || targetBackup != _targetLetters.value)
+            && _sourceLetters.value.filterNotNull().size
+            + _targetLetters.value.filterNotNull().size == 10) {
+            _numMoves.value++
         }
     }
 
@@ -141,17 +211,21 @@ class AppViewModel: ViewModel() {
 
     fun isValidWord(): Boolean {
         val word = returnString().lowercase()
-        return word in validWords && word !in _successfulWords
+        return word.length >= _minimumWordLength.value &&
+               word.length <= _maximumWordLength.value &&
+               word in validWords
     }
 
     fun validWordCreated() {
-        val word = returnString().lowercase()
-        _numWords.update { _numWords.value + 1 }
+        _sessionList.update { _sessionList.value + (GameSession(
+            word = returnString().lowercase(),
+            points = _currentScore.value,
+            numMoves = _numMoves.value,
+            time = currentTime()
+        ))}
         _totalScore.update { _totalScore.value + _currentScore.value }
-        _successfulWords.add(word)
-
-        _targetLetters.update { emptyList() }
-        _currentScore.update { 0 }
+        _numWords.value = numWords()
+        selectRandomLetters()
     }
 
     fun shuffleLetters() {
@@ -174,4 +248,62 @@ class AppViewModel: ViewModel() {
         }
     }
 
+    fun numWords(): Int {
+        return _sessionList.value.size
+    }
+
+    fun resetTime() {
+        _startTime = TimeSource.Monotonic.markNow()
+        _currentTime.value = 0
+    }
+
+    fun currentTime(): Long {
+        return _startTime.elapsedNow().inWholeSeconds
+    }
+
+    fun sort() {
+        when(_sortState) {
+            0 -> sortAlphabetical()
+            1 -> sortLength()
+            2 -> sortPoints()
+            3 -> sortTimeAndMoves()
+        }
+        _sortState = when(_sortState) {
+            0 -> 1
+            1 -> 2
+            2 -> 3
+            else -> 0
+        }
+    }
+
+    fun resetSort() {
+        _sortState = 0
+    }
+
+    fun sortAlphabetical() {
+        _sessionList.update { it.sortedBy { it.word } }
+    }
+
+    fun sortLength() {
+        _sessionList.update { it.sortedBy { it.word.length } }
+    }
+
+    fun sortPoints() {
+        _sessionList.update { it.sortedBy { it.points } }
+    }
+
+    fun sortTimeAndMoves() {
+        _sessionList.update {
+            _sessionList.value.sortedWith(
+                compareBy<GameSession> { it.time }.thenByDescending { it.numMoves }
+            )
+        }
+    }
+
+    fun confirmSettings(backgroundColor:List<Float>, minimumWordLength:Int, maximumWordLength:Int, numberOfLetters:Int) {
+        _backgroundColor.update { backgroundColor}
+        _minimumWordLength.update { minimumWordLength }
+        _maximumWordLength.update { maximumWordLength }
+        _numberOfLetters.update { numberOfLetters }
+    }
 }

@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -39,6 +38,7 @@ import androidx.compose.ui.draganddrop.DragAndDropTransferData
 import androidx.compose.ui.draganddrop.toAndroidDragEvent
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
@@ -61,20 +61,22 @@ fun GameScreen(modifier: Modifier = Modifier, viewModel: AppViewModel) {
     val currentScore by viewModel.currentScore.collectAsState()
     val totalScore by viewModel.totalScore.collectAsState()
     val numWords by viewModel.numWords.collectAsState()
+    val currentTime by viewModel.currentTime.collectAsState()
 
     Column(
         verticalArrangement = Arrangement.Top,
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
-            .fillMaxSize()
-            .padding(top = 100.dp)
+            .fillMaxWidth()
+            .padding(top = 45.dp)
     ) {
 
-        Text("Current Word Score: $currentScore", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Text("Total Score: $totalScore", fontSize = 16.sp)
-        Text("Words Built: $numWords", fontSize = 16.sp)
+        Text("Current Word Score: $currentScore", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Text("Total Score: $totalScore", fontSize = 18.sp)
+        Text("Words Built: $numWords", fontSize = 18.sp)
+        Text("Time Elapsed: $currentTime", fontSize = 22.sp)
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(20.dp))
 
         Row(
             horizontalArrangement = Arrangement.SpaceEvenly,
@@ -97,37 +99,36 @@ fun GameScreen(modifier: Modifier = Modifier, viewModel: AppViewModel) {
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        LetterGroup(letters = arrangedLetters, groupId = "Top") {
+        LetterGroup(letters = arrangedLetters, groupId = "Top", backgroundColor = viewModel.backgroundColor.collectAsState().value) {
             viewModel.rearrangeLetters(Origin.CenterBox, it.filterNotNull())
         }
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        LetterGroup(letters = stockLetters, groupId = "Bottom") {
+        LetterGroup(letters = stockLetters, groupId = "Bottom", backgroundColor = viewModel.backgroundColor.collectAsState().value) {
             viewModel.rearrangeLetters(Origin.Stock, it.filterNotNull())
-        }
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        Button(onClick = { viewModel.selectRandomLetters() }) {
-            Text("Generate New Letters")
         }
     }
 }
 
 @Composable
-fun BigLetter(modifier: Modifier = Modifier, letter: Letter?, cellSize: Dp = 48.dp) {
+fun BigLetter(modifier: Modifier = Modifier, letter: Letter?, cellSize: Dp = 48.dp, backgroundColor:List<Float>) {
     val smallTextSize = (cellSize.value * 0.2125).sp
     val largeTextSize = (cellSize.value * 0.625).sp
 
     val edgePadding = 2.375.dp
+
+    val backColor = Color(
+        backgroundColor[0] / 255f,
+        backgroundColor[1] / 255f,
+        backgroundColor[2] / 255f)
 
     Box(
         modifier = modifier
             .size(cellSize)
             .border(width = 1.dp, color = Color.Black, shape = RoundedCornerShape(8.dp))
             .background(
-                if (letter == null) Color.Transparent else Color.Green,
+                if (letter == null) Color.Transparent else backColor,
                 shape = RoundedCornerShape(8.dp)
             )
     ) {
@@ -139,7 +140,11 @@ fun BigLetter(modifier: Modifier = Modifier, letter: Letter?, cellSize: Dp = 48.
                 else -> ""
             },
             fontSize = smallTextSize,
-            lineHeight = smallTextSize, // Forces the bounding box to wrap tightly
+            lineHeight = smallTextSize,
+            color = when {
+                backColor.luminance() >= .35 -> Color.Black
+                else -> Color.White
+            },
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(start = edgePadding, top = edgePadding)
@@ -148,13 +153,21 @@ fun BigLetter(modifier: Modifier = Modifier, letter: Letter?, cellSize: Dp = 48.
         Text(
             text = (letter?.text ?: "").toString(),
             fontSize = largeTextSize,
+            color = when {
+                backColor.luminance() > .5 -> Color.Black
+                else -> Color.White
+            },
             modifier = Modifier.align(Alignment.Center)
         )
         // Point value text
         Text(
             text = (letter?.point ?: "").toString(),
             fontSize = smallTextSize,
-            lineHeight = smallTextSize, // Forces the bounding box to wrap tightly
+            lineHeight = smallTextSize,
+            color = when {
+                backColor.luminance() > .5 -> Color.Black
+                else -> Color.White
+            },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = edgePadding, bottom = edgePadding)
@@ -167,7 +180,8 @@ fun BigLetter(modifier: Modifier = Modifier, letter: Letter?, cellSize: Dp = 48.
 fun LetterGroup(
     modifier: Modifier = Modifier, groupId: String,
     letters: List<Letter?>,
-    onRearranged: (List<Letter?>) -> Unit
+    backgroundColor: List<Float>,
+    onRearranged: (List<Letter?>) -> Unit,
 ) {
     val configuration = LocalConfiguration.current
     val letterSize = (configuration.screenWidthDp.dp - 24.dp) /
@@ -200,15 +214,29 @@ fun LetterGroup(
         object : DragAndDropTarget {
             override fun onDrop(event: DragAndDropEvent): Boolean {
                 val ev = event.toAndroidDragEvent()
-                val dropData = ev.clipData.getItemAt(0).text
-                // Decode the string payload (text and point separated by '/')
-                val (text, point) = dropData.split("/")
-                val letterObject = Letter(text.first(), point.toInt())
-                // Drop the letter to the empty cell
-                if (emptyCellIndex != null) {
-                    mutLetters[emptyCellIndex!!] = letterObject
+                val dropData = ev.clipData.getItemAt(0).text.toString()
+
+                val parts = dropData.split("/")
+                if (parts.size >= 4) {
+                    val text = parts[0].first()
+                    val point = parts[1].toInt()
+                    val lMult = parts[2].toInt()
+                    val wMult = parts[3].toInt()
+
+                    // Reconstruct the full object
+                    val letterObject = Letter(
+                        text = text,
+                        point = point,
+                        letterMultiplier = lMult,
+                        wordMultiplier = wMult
+                    )
+
+                    if (emptyCellIndex != null) {
+                        mutLetters[emptyCellIndex!!] = letterObject
+                    }
                 }
-                emptyCellIndex = null // no more empty cell now
+
+                emptyCellIndex = null
                 return true
             }
 
@@ -281,19 +309,19 @@ fun LetterGroup(
                     mutLetters,
                     key = { pos, item -> "$pos-" + (item?.text ?: "#") }) { pos, lx ->
                     BigLetter(
-                        letter = lx, cellSize = letterSize.coerceAtMost(80.dp),
+                        letter = lx, cellSize = letterSize.coerceAtMost(80.dp), backgroundColor = backgroundColor,
                         modifier = Modifier
-                            .dragAndDropSource(transferData =  {
+                            .dragAndDropSource(transferData = {
                                 startDragIndex = pos
                                 draggedLetter = lx
                                 mutLetters[pos] = null
                                 emptyCellIndex = pos
+
+                                // Pack all 4 properties: text, point, letterMultiplier, wordMultiplier
+                                val payload = "${lx?.text ?: "$"}/${lx?.point}/${lx?.letterMultiplier}/${lx?.wordMultiplier}"
+
                                 DragAndDropTransferData(
-                                    clipData = ClipData.newPlainText(
-                                        "",
-                                        // Some hack here: unpack the object details as a string
-                                        "${lx?.text ?: "$"}/${lx?.point}"
-                                    )
+                                    clipData = ClipData.newPlainText("letter_data", payload)
                                 )
                             }))
                 }
