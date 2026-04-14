@@ -18,11 +18,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 
 @Composable
 fun StatsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
@@ -47,7 +52,7 @@ fun StatsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
         ) {
             if(history.isNotEmpty()){
                 items(history) { session ->
-                    StatsRow(session)
+                    StatsRow(viewModel, session)
                 }
             }
             else {
@@ -60,22 +65,57 @@ fun StatsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
 }
 
 @Composable
-fun StatsRow(session: GameSession) {
+fun StatsRow(viewModel: AppViewModel, session: GameSession) {
+    val scope = rememberCoroutineScope()
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
+        verticalAlignment = Alignment.CenterVertically // Keeps everything aligned in the middle row-wise
     ) {
-        Column {
-            Text(text = session.word[0].uppercase()+session.word.substring(1), fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = Alignment.Start
+        ) {
+            Text(
+                text = session.word.replaceFirstChar { it.uppercase() },
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
             Text(text = "${session.time}s | ${session.numMoves} moves", fontSize = 12.sp)
         }
-        Text(
-            text = "${session.points} pts",
-            color = Color.Blue,
-            fontWeight = FontWeight.Bold
-        )
+
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "${session.points} pts",
+                color = Color.Blue,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = Alignment.End
+        ) {
+            Button(
+                onClick = {
+                    scope.launch {
+                        viewModel.dao.removeOne(session)
+                    }
+                },
+                content = {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Delete Item",
+                        tint = Color.White
+                    )
+                }
+            )
+        }
     }
 }
 

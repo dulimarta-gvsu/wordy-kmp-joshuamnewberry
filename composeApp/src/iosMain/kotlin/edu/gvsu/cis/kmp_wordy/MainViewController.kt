@@ -11,6 +11,7 @@ val LocalWordScreenFactory = staticCompositionLocalOf<WordScreenFactory> {
 
 fun MainViewController(factory:WordScreenFactory): UIViewController = ComposeUIViewController {
     CompositionLocalProvider(LocalWordScreenFactory provides factory) {
-        App()
+        val db: AppDB = getDatabaseInstance(getDatabaseBuilder())
+        App(db.getDao())
     }
 }

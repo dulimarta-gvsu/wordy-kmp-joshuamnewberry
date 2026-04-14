@@ -2,22 +2,20 @@ package edu.gvsu.cis.kmp_wordy
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
-@Preview
-fun App() {
+fun App(dao: AppDAO) {
     MaterialTheme {
         val navController = rememberNavController()
-        val vm: AppViewModel = remember { AppViewModel() }
+
+        val vm =  AppViewModel(dao = dao)
 
         NavHost(navController = navController, startDestination = "main") {
             composable("main") {
-                // MainScreen is the Parent
                 MainScreen(
                     viewModel = vm,
                     onNavigateToSettings = { navController.navigate("settings") },

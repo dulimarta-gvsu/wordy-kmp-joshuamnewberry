@@ -1,5 +1,6 @@
 package edu.gvsu.cis.kmp_wordy
 
+import androidx.room.Entity
 import com.hoc081098.kmp.viewmodel.ViewModel
 import com.hoc081098.kmp.viewmodel.wrapper.NonNullStateFlowWrapper
 import com.hoc081098.kmp.viewmodel.wrapper.wrap
@@ -12,6 +13,10 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
+import androidx.room.PrimaryKey
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+
 
 data class Letter(val text: Char = '$', val point: Int = 0, val letterMultiplier: Int = 1, val wordMultiplier: Int = 1)
 
@@ -32,7 +37,7 @@ val validWords: List<String> = """the of to too and in is it you that he was for
         found answer school grow study still learn plant cover food sun four thought let keep eye never last door
         between city tree cross since hard start might story saw far sea draw left late run don't while press
         close night real life few stop open seem together next white children begin got walk example ease paper
-        often always music those both mark book letter until mile river car feet care second group carry took
+        often always music those both mark book letter until mile river car feet care second group carry took foul
         rain eat room friend began idea fish mountain north once base hear horse cut sure watch color face wood
         main enough plain girl usual young ready above ever red list though feel talk bird soon body dog family
         direct pose leave song measure state product black short numeral class wind question happen complete quac
@@ -55,14 +60,17 @@ val letterPoint = mapOf('A' to 1, 'B' to 3, 'C' to 3, 'D' to 2,
     'M' to 3, 'N' to 1, 'O' to 1, 'P' to 3, 'Q' to 10, 'R' to 1, 'S' to 1, 'T' to 1,
     'U' to 1, 'V' to 4, 'W' to 4, 'X' to 8, 'Y' to 4, 'Z' to 10)
 
+@Entity
 data class GameSession(
     val word: String,
     val points: Int,
     val numMoves: Int,
-    val time: Long
+    val time: Long,
+    @PrimaryKey(autoGenerate = true) val sessionID: Int = 0,
 )
 
-class AppViewModel: ViewModel() {
+class AppViewModel(val dao: AppDAO): ViewModel() {
+
     private val _sourceLetters = MutableStateFlow(emptyList<Letter?>())
     val sourceLetters:NonNullStateFlowWrapper<List<Letter?>> = _sourceLetters.stateIn(
         scope = viewModelScope,
@@ -89,11 +97,8 @@ class AppViewModel: ViewModel() {
         initialValue = 0)
         .wrap()
 
-    private val _sessionList = MutableStateFlow(emptyList<GameSession>())
-    val sessionList:NonNullStateFlowWrapper<List<GameSession>> = _sessionList.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.Eagerly,
-        initialValue = emptyList())
+    private val _sessionList = MutableStateFlow<List<GameSession>>(emptyList())
+    val sessionList: NonNullStateFlowWrapper<List<GameSession>> = _sessionList
         .wrap()
 
     private val _numMoves = MutableStateFlow(0)
@@ -150,11 +155,23 @@ class AppViewModel: ViewModel() {
 
     init {
         selectRandomLetters()
+        viewModelScope.launch(Dispatchers.IO) {
+            // This keeps the list updated with the DB automatically
+            dao.selectAll().collect {
+                _sessionList.value = it
+            }
+        }
         viewModelScope.launch {
             while (true) {
                 delay(499)
                 _currentTime.value = currentTime()
             }
+        }
+    }
+
+    fun addNew(word: String, points: Int, numMoves: Int, time: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            dao.insert(GameSession(word, points, numMoves, time))
         }
     }
 
@@ -197,7 +214,7 @@ class AppViewModel: ViewModel() {
         }
         if((sourceBackup != _sourceLetters.value || targetBackup != _targetLetters.value)
             && _sourceLetters.value.filterNotNull().size
-            + _targetLetters.value.filterNotNull().size == 10) {
+            + _targetLetters.value.filterNotNull().size == _numberOfLetters.value) {
             _numMoves.value++
         }
     }
@@ -217,12 +234,13 @@ class AppViewModel: ViewModel() {
     }
 
     fun validWordCreated() {
-        _sessionList.update { _sessionList.value + (GameSession(
+        addNew(
             word = returnString().lowercase(),
             points = _currentScore.value,
             numMoves = _numMoves.value,
             time = currentTime()
-        ))}
+        )
+
         _totalScore.update { _totalScore.value + _currentScore.value }
         _numWords.value = numWords()
         selectRandomLetters()
@@ -249,7 +267,7 @@ class AppViewModel: ViewModel() {
     }
 
     fun numWords(): Int {
-        return _sessionList.value.size
+        return sessionList.value.size
     }
 
     fun resetTime() {
@@ -281,22 +299,34 @@ class AppViewModel: ViewModel() {
     }
 
     fun sortAlphabetical() {
-        _sessionList.update { it.sortedBy { it.word } }
+        viewModelScope.launch(Dispatchers.IO) {
+            _sessionList.update {
+                dao.selectAllSortedByAlphabetical()
+            }
+        }
     }
 
     fun sortLength() {
-        _sessionList.update { it.sortedBy { it.word.length } }
+        viewModelScope.launch(Dispatchers.IO) {
+            _sessionList.update {
+                dao.selectAllSortedByLength()
+            }
+        }
     }
 
     fun sortPoints() {
-        _sessionList.update { it.sortedBy { it.points } }
+        viewModelScope.launch(Dispatchers.IO) {
+            _sessionList.update {
+                dao.selectAllSortedByPoints()
+            }
+        }
     }
 
     fun sortTimeAndMoves() {
-        _sessionList.update {
-            _sessionList.value.sortedWith(
-                compareBy<GameSession> { it.time }.thenByDescending { it.numMoves }
-            )
+        viewModelScope.launch(Dispatchers.IO) {
+            _sessionList.update {
+                dao.selectAllSortedByTimeAndMoves()
+            }
         }
     }
 
