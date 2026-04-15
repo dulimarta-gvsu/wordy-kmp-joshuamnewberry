@@ -7,8 +7,7 @@ plugins {
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.ksp)
     alias(libs.plugins.androidx.room)
-    id("io.insert-koin.compiler.plugin")
-    id ("org.jetbrains.kotlin.plugin.serialization")
+    id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 kotlin {
@@ -26,7 +25,6 @@ kotlin {
     ).forEach { iosTarget ->
         iosTarget.binaries.framework {
             baseName = "ComposeApp"
-//            isStatic = true
         }
     }
 
@@ -34,8 +32,8 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.activity.compose)
-            implementation("io.insert-koin:koin-android:3.4.1")
-            implementation("io.ktor:ktor-client-android:3.4.1")
+            implementation(libs.koin.android)
+            implementation(libs.ktor.client.android)
         }
         commonMain.dependencies {
             implementation(libs.compose.runtime)
@@ -44,24 +42,28 @@ kotlin {
             implementation(libs.compose.ui)
             implementation(libs.compose.components.resources)
             implementation(libs.compose.uiToolingPreview)
+
+            // Standard KMP Lifecycle & Room
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
             implementation(libs.androidx.room.runtime)
             implementation(libs.androidx.sqlite.bundled)
-            implementation(compose.materialIconsExtended)
-            implementation("org.jetbrains.androidx.navigation:navigation-compose:2.9.2")
-            implementation("io.github.hoc081098:kmp-viewmodel:0.8.0")
-            implementation("io.github.hoc081098:kmp-viewmodel-compose:0.8.0")
-            implementation("io.github.hoc081098:kmp-viewmodel-savedstate:0.8.0")
-            implementation("io.insert-koin:koin-core:3.4.1")
-            implementation("io.github.hoc081098:kmp-viewmodel-koin-compose:0.8.0")
-            implementation("io.ktor:ktor-client-logging:3.4.1")
-            implementation("io.ktor:ktor-client-core:3.4.1")
-            implementation("io.ktor:ktor-serialization-kotlinx-json:3.4.1")
-            implementation("io.ktor:ktor-client-content-negotiation:3.4.1")
+            implementation(libs.compose.material.icons)
+            implementation(libs.navigation.compose)
+
+            // Official Koin KMP Libraries
+            implementation(libs.koin.core)
+            implementation(libs.koin.compose.viewmodel)
+
+            // Ktor Networking & Serialization
+            implementation(libs.ktor.client.logging)
+            implementation(libs.ktor.client.core)
+            implementation(libs.ktor.client.content.negotiation)
+            implementation(libs.ktor.serialization.kotlinx.json)
+            implementation(libs.kotlinx.serialization.json)
         }
         iosMain.dependencies {
-            implementation("io.ktor:ktor-client-darwin:3.4.1")
+            implementation(libs.ktor.client.darwin)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
@@ -99,7 +101,6 @@ android {
 room {
     schemaDirectory("$projectDir/schemas")
 }
-
 
 dependencies {
     debugImplementation(libs.compose.uiTooling)

@@ -1,13 +1,8 @@
 package edu.gvsu.cis.kmp_wordy
 
 import androidx.room.Entity
-import com.hoc081098.kmp.viewmodel.ViewModel
-import com.hoc081098.kmp.viewmodel.wrapper.NonNullStateFlowWrapper
-import com.hoc081098.kmp.viewmodel.wrapper.wrap
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -15,6 +10,11 @@ import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 import androidx.room.PrimaryKey
 import kotlinx.coroutines.Dispatchers
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import io.ktor.client.HttpClient
 import kotlinx.coroutines.IO
 
 
@@ -71,85 +71,46 @@ data class GameSession(
 
 class AppViewModel(val dao: AppDAO): ViewModel() {
 
-    private val _sourceLetters = MutableStateFlow(emptyList<Letter?>())
-    val sourceLetters:NonNullStateFlowWrapper<List<Letter?>> = _sourceLetters.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.Eagerly,
-        initialValue = emptyList<Letter>())
-        .wrap()
-    private val _targetLetters = MutableStateFlow(emptyList<Letter?>())
-    val targetLetters:NonNullStateFlowWrapper<List<Letter?>> = _targetLetters.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.Eagerly,
-        initialValue = emptyList<Letter>())
-        .wrap()
-
-    private val _totalScore = MutableStateFlow(0)
-    val totalScore:NonNullStateFlowWrapper<Int> = _totalScore.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.Eagerly,
-        initialValue = 0)
-        .wrap()
-    private val _currentScore = MutableStateFlow(0)
-    val currentScore:NonNullStateFlowWrapper<Int> = _currentScore.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.Eagerly,
-        initialValue = 0)
-        .wrap()
-
+    // Stats
     private val _sessionList = MutableStateFlow<List<GameSession>>(emptyList())
-    val sessionList: NonNullStateFlowWrapper<List<GameSession>> = _sessionList
-        .wrap()
+    val sessionList: StateFlow<List<GameSession>> = _sessionList.asStateFlow()
 
-    private val _numMoves = MutableStateFlow(0)
-    val numMoves:NonNullStateFlowWrapper<Int> = _numMoves.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.Eagerly,
-        initialValue = 0)
-        .wrap()
+    // Letter Lists
+    private val _sourceLetters = MutableStateFlow<List<Letter?>>(emptyList())
+    val sourceLetters: StateFlow<List<Letter?>> = _sourceLetters.asStateFlow()
+
+    private val _targetLetters = MutableStateFlow<List<Letter?>>(emptyList())
+    val targetLetters: StateFlow<List<Letter?>> = _targetLetters.asStateFlow()
+
+    // Current Round Numbers
+    private val _totalScore = MutableStateFlow(0)
+    val totalScore:StateFlow<Int> = _totalScore.asStateFlow()
+
+    private val _currentScore = MutableStateFlow(0)
+    val currentScore:StateFlow<Int> = _currentScore.asStateFlow()
 
     private val _numWords = MutableStateFlow(0)
-    val numWords:NonNullStateFlowWrapper<Int> = _numWords.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.Eagerly,
-        initialValue = 0)
-        .wrap()
+    val numWords:StateFlow<Int> = _numWords.asStateFlow()
 
+    private var _numMoves: Int = 0
+
+    // UI Settings
     private val _backgroundColor = MutableStateFlow(listOf(0f,255f,0f))
-    val backgroundColor:NonNullStateFlowWrapper<List<Float>> = _backgroundColor.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.Eagerly,
-        initialValue = listOf(0f,255f,0f))
-        .wrap()
+    val backgroundColor:StateFlow<List<Float>> = _backgroundColor.asStateFlow()
 
     private val _minimumWordLength = MutableStateFlow(2)
-    val minimumWordLength:NonNullStateFlowWrapper<Int> = _minimumWordLength.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.Eagerly,
-        initialValue = 2)
-        .wrap()
+    val minimumWordLength:StateFlow<Int> = _minimumWordLength.asStateFlow()
 
     private val _maximumWordLength = MutableStateFlow(10)
-    val maximumWordLength:NonNullStateFlowWrapper<Int> = _maximumWordLength.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.Eagerly,
-        initialValue = 10)
-        .wrap()
+    val maximumWordLength:StateFlow<Int> = _maximumWordLength.asStateFlow()
 
     private val _numberOfLetters = MutableStateFlow(10)
-    val numberOfLetters:NonNullStateFlowWrapper<Int> = _numberOfLetters.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.Eagerly,
-        initialValue = 10)
-        .wrap()
+    val numberOfLetters:StateFlow<Int> = _numberOfLetters.asStateFlow()
 
     private var _startTime: TimeMark = TimeSource.Monotonic.markNow()
+
     private val _currentTime = MutableStateFlow(currentTime())
-    val currentTime:NonNullStateFlowWrapper<Long> = _currentTime.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.Eagerly,
-        initialValue = currentTime())
-        .wrap()
+    val currentTime:StateFlow<Long> = _currentTime.asStateFlow()
 
     private var _sortState: Int = 0
 
@@ -196,7 +157,7 @@ class AppViewModel(val dao: AppDAO): ViewModel() {
         }
         _targetLetters.update { emptyList() }
         _currentScore.update { 0 }
-        _numMoves.update { 0 }
+        _numMoves = 0
         resetTime()
     }
 
@@ -215,7 +176,7 @@ class AppViewModel(val dao: AppDAO): ViewModel() {
         if((sourceBackup != _sourceLetters.value || targetBackup != _targetLetters.value)
             && _sourceLetters.value.filterNotNull().size
             + _targetLetters.value.filterNotNull().size == _numberOfLetters.value) {
-            _numMoves.value++
+            _numMoves++
         }
     }
 
@@ -237,7 +198,7 @@ class AppViewModel(val dao: AppDAO): ViewModel() {
         addNew(
             word = returnString().lowercase(),
             points = _currentScore.value,
-            numMoves = _numMoves.value,
+            numMoves = _numMoves,
             time = currentTime()
         )
 
@@ -300,33 +261,25 @@ class AppViewModel(val dao: AppDAO): ViewModel() {
 
     fun sortAlphabetical() {
         viewModelScope.launch(Dispatchers.IO) {
-            _sessionList.update {
-                dao.selectAllSortedByAlphabetical()
-            }
+            _sessionList.value = dao.selectAllSortedByAlphabetical()
         }
     }
 
     fun sortLength() {
         viewModelScope.launch(Dispatchers.IO) {
-            _sessionList.update {
-                dao.selectAllSortedByLength()
-            }
+            _sessionList.value = dao.selectAllSortedByLength()
         }
     }
 
     fun sortPoints() {
         viewModelScope.launch(Dispatchers.IO) {
-            _sessionList.update {
-                dao.selectAllSortedByPoints()
-            }
+            _sessionList.value = dao.selectAllSortedByPoints()
         }
     }
 
     fun sortTimeAndMoves() {
         viewModelScope.launch(Dispatchers.IO) {
-            _sessionList.update {
-                dao.selectAllSortedByTimeAndMoves()
-            }
+            _sessionList.value = dao.selectAllSortedByTimeAndMoves()
         }
     }
 
