@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -36,12 +37,13 @@ fun SettingsScreen(viewModel: AppViewModel, onBack:() -> Unit) {
     var minimumWordLength by remember { mutableStateOf(viewModel.minimumWordLength.value) }
     var maximumWordLength by remember { mutableStateOf(viewModel.maximumWordLength.value)}
     var numberOfLetters by remember { mutableStateOf(viewModel.numberOfLetters.value) }
+    var useFilteredList by remember { mutableStateOf(viewModel.useFilteredList.value) }
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 50.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Spacer(Modifier.padding(30.dp))
         Row(horizontalArrangement = Arrangement.SpaceAround, modifier = Modifier.fillMaxWidth()) {
             Button(onClick = {onBack()}) { Text("Go Back") }
             Button(onClick = {viewModel.confirmSettings(listOf(redSlider, greenSlider, blueSlider),
-                minimumWordLength, maximumWordLength, numberOfLetters)
+                minimumWordLength, maximumWordLength, numberOfLetters, useFilteredList)
                 onBack()}) { Text("Confirm Changes") }
         }
         Spacer(Modifier.padding(7.5.dp))
@@ -128,5 +130,13 @@ fun SettingsScreen(viewModel: AppViewModel, onBack:() -> Unit) {
                 inactiveTrackColor = Color.Black.copy(alpha = 0.24f)
             )
         )
+        Row(modifier = Modifier.padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(
+                checked = useFilteredList,
+                onCheckedChange = { useFilteredList = it }
+            )
+            Text(text = "Use Filtered List", fontSize = 20.sp)
+        }
     }
 }

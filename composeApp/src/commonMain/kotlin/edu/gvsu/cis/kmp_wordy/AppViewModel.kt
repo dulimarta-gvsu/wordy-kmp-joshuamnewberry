@@ -15,7 +15,16 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.request.get
+import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.IO
+import kotlin.collections.List
+import kotlinx.serialization.Serializable
+import io.ktor.client.plugins.logging.LogLevel
+import io.ktor.client.plugins.logging.Logging
+import kotlinx.serialization.json.Json
 
 
 data class Letter(val text: Char = '$', val point: Int = 0, val letterMultiplier: Int = 1, val wordMultiplier: Int = 1)
@@ -23,37 +32,6 @@ data class Letter(val text: Char = '$', val point: Int = 0, val letterMultiplier
 enum class Origin {
     Stock, CenterBox
 }
-
-val validWords: List<String> = """the of to too and in is it you that he was for on are with as his they be at one
-        have this from or had by hot but some what there we can out other were all your when up use word zap
-        how said an each she which do their time if will way about many then them would write like so these fin
-        her long make thing see him two has look more day could go come did my sound no most number who over
-        know water than call first people may down side been now find any new work part take get place made fix
-        live where after back little only round man year came show every good me give our under name very through
-        just form much great think say help low line before turn cause same mean differ move right boy old too
-        does tell sentence set three want air well also play small end put home read hand port large spell add
-        even land here must big high such follow act why ask men change went light kind off need house picture
-        try us again animal point mother world near build self earth father head stand own page should country
-        found answer school grow study still learn plant cover food sun four thought let keep eye never last door
-        between city tree cross since hard start might story saw far sea draw left late run don't while press
-        close night real life few stop open seem together next white children begin got walk example ease paper
-        often always music those both mark book letter until mile river car feet care second group carry took foul
-        rain eat room friend began idea fish mountain north once base hear horse cut sure watch color face wood
-        main enough plain girl usual young ready above ever red list though feel talk bird soon body dog family
-        direct pose leave song measure state product black short numeral class wind question happen complete quac
-        ship area half rock order fire south problem piece told knew pass farm top whole king size heard best
-        hour better true false during hundred am remember step early hold west ground interest reach fast five sing
-        listen six table travel less morning ten simple several vowel toward war lay against pattern slow center
-        love person money serve appear road map science rule govern pull cold notice voice fall power town fine
-        certain fly unit lead cry dark machine note wait plan figure star box noun field rest correct able pound
-        done beauty drive stood contain front teach week final gave green oh quick develop sleep warm free minute
-        strong special mind behind clear tail produce fact street inch lot nothing course stay wheel full force
-        blue object decide surface deep moon island foot yet busy test record boat common gold possible plane fog
-        age dry wonder laugh thousand ago ran check game shape yes hot miss brought heat snow bed bring sit vace
-        perhaps fill east weight language among mug cat desk phone window wall floor jump happy sad tall clean dirty
-        nose mouth ear leg arm shoe hat coat bus train cup plate bowl fork spoon knife bread cheese milk juice apple
-        grape orange yellow purple brown pink gray bad job win lose fun pop mom dad kid toy sky cloud ice cool sweet
-        sour taste smell touch soft loud quiet smart nice rich poor glad mad nag boo gay pal lap muk bug sue urn""".lowercase().split(" ")
 
 val letterPoint = mapOf('A' to 1, 'B' to 3, 'C' to 3, 'D' to 2,
     'E' to 1, 'F' to 4, 'G' to 2, 'H' to 4, 'I' to 1, 'J' to 8, 'K' to 5, 'L' to 1,
@@ -69,7 +47,27 @@ data class GameSession(
     @PrimaryKey(autoGenerate = true) val sessionID: Int = 0,
 )
 
+@Serializable
+data class QuoteResponse(
+    val quotes: List<Quote>
+)
+
+@Serializable
+data class Quote(
+    val quote: String
+)
+
 class AppViewModel(val dao: AppDAO): ViewModel() {
+    val client = HttpClient() {
+        install(ContentNegotiation) {
+            json(Json() {
+                ignoreUnknownKeys = true
+            })
+        }
+        install(Logging) {
+            level = LogLevel.ALL // Other options: BODY, INFO, HEADERS
+        }
+    }
 
     // Stats
     private val _sessionList = MutableStateFlow<List<GameSession>>(emptyList())
@@ -88,9 +86,6 @@ class AppViewModel(val dao: AppDAO): ViewModel() {
 
     private val _currentScore = MutableStateFlow(0)
     val currentScore:StateFlow<Int> = _currentScore.asStateFlow()
-
-    private val _numWords = MutableStateFlow(0)
-    val numWords:StateFlow<Int> = _numWords.asStateFlow()
 
     private var _numMoves: Int = 0
 
@@ -114,10 +109,20 @@ class AppViewModel(val dao: AppDAO): ViewModel() {
 
     private var _sortState: Int = 0
 
+    // Words Lists and settings choice
+
+    private val _validWords = MutableStateFlow<List<String>>(emptyList())
+
+    private val _useFilteredList = MutableStateFlow(true)
+    val useFilteredList:StateFlow<Boolean> = _useFilteredList.asStateFlow()
+
+    private val _easyWords = setOf("a", "an", "the", "and", "but", "or", "for", "nor", "on", "at",
+        "to", "from", "by", "of", "in", "up", "is", "it", "be", "as", "he", "we", "me", "us", "am", "hi")
+
     init {
+        fetchValidWordsFromAPI()
         selectRandomLetters()
         viewModelScope.launch(Dispatchers.IO) {
-            // This keeps the list updated with the DB automatically
             dao.selectAll().collect {
                 _sessionList.value = it
             }
@@ -126,6 +131,37 @@ class AppViewModel(val dao: AppDAO): ViewModel() {
             while (true) {
                 delay(499)
                 _currentTime.value = currentTime()
+            }
+        }
+    }
+
+    fun fetchValidWordsFromAPI() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val response = client.get("https://dummyjson.com/quotes?limit=10000")
+
+                val quoteResponse = response.body<QuoteResponse>()
+
+                val processedWordsSet = mutableSetOf<String>()
+
+                quoteResponse.quotes.forEach { quoteObj ->
+                    val tokens = quoteObj.quote
+                        .lowercase()
+                        .replace(Regex("[^a-z ]"), "")
+                        .split("\\s+".toRegex())
+
+                    tokens.forEach { word ->
+                        if (word.isNotBlank() && word.length > 2 && !_easyWords.contains(word)) {
+                            processedWordsSet.add(word)
+                        }
+                    }
+                }
+
+                _validWords.value = processedWordsSet.toList()
+                println("Successfully loaded ${processedWordsSet.size} unique words!")
+
+            } catch (e: Exception) {
+                println("API Fetch Error: ${e.message}")
             }
         }
     }
@@ -142,7 +178,7 @@ class AppViewModel(val dao: AppDAO): ViewModel() {
             val vowels = (1..(.6*_numberOfLetters.value).roundToInt()).map {
                 "AEIOU".random()
             }
-            val consonants = (1..(.4*_numberOfLetters.value).roundToInt()).map {
+            val consonants = (1..(_numberOfLetters.value-vowels.size)).map {
                 "BCDFGHJKLMNPQRSTVWXYZ".random()
             }
             (vowels + consonants).map {
@@ -191,7 +227,8 @@ class AppViewModel(val dao: AppDAO): ViewModel() {
         val word = returnString().lowercase()
         return word.length >= _minimumWordLength.value &&
                word.length <= _maximumWordLength.value &&
-               word in validWords
+                ((_useFilteredList.value && word in _validWords.value) ||
+                    (!_useFilteredList.value && (word in _validWords.value || word in _easyWords)))
     }
 
     fun validWordCreated() {
@@ -203,7 +240,6 @@ class AppViewModel(val dao: AppDAO): ViewModel() {
         )
 
         _totalScore.update { _totalScore.value + _currentScore.value }
-        _numWords.value = numWords()
         selectRandomLetters()
     }
 
@@ -283,10 +319,11 @@ class AppViewModel(val dao: AppDAO): ViewModel() {
         }
     }
 
-    fun confirmSettings(backgroundColor:List<Float>, minimumWordLength:Int, maximumWordLength:Int, numberOfLetters:Int) {
-        _backgroundColor.update { backgroundColor}
-        _minimumWordLength.update { minimumWordLength }
-        _maximumWordLength.update { maximumWordLength }
-        _numberOfLetters.update { numberOfLetters }
+    fun confirmSettings(backgroundColor:List<Float>, minimumWordLength:Int, maximumWordLength:Int, numberOfLetters:Int, useFilteredList: Boolean) {
+        _backgroundColor.value = backgroundColor
+        _minimumWordLength.value = minimumWordLength
+        _maximumWordLength.value = maximumWordLength
+        _numberOfLetters.value = numberOfLetters
+        _useFilteredList.value = useFilteredList
     }
 }
