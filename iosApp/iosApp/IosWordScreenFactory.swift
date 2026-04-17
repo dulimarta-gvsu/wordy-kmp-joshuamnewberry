@@ -1,8 +1,9 @@
 import SwiftUI
 import composeApp
 
-class IosWordScreenFactory: WordScreenFactory {
+class IosWordScreenFactory: IosFactoryProvider {
     func createWordScreen(viewModel: AppViewModel) -> Any {
-        return UIHostingController(rootView: WordScreenView(viewModel: viewModel))
+        let iosVM = iosAppViewModel(commonVm: viewModel)
+        return UIHostingController(rootView: WordScreenView(vm: iosVM))
     }
 }
