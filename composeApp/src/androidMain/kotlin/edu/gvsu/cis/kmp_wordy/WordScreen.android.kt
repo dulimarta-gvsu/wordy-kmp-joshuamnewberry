@@ -60,7 +60,7 @@ fun GameScreen(modifier: Modifier = Modifier, viewModel: AppViewModel) {
 
     val currentScore by viewModel.currentScore.collectAsState()
     val totalScore by viewModel.totalScore.collectAsState()
-    val numWords by viewModel.numWords.collectAsState()
+    val sessionList by viewModel.sessionList.collectAsState()
     val currentTime by viewModel.currentTime.collectAsState()
 
     Column(
@@ -73,14 +73,16 @@ fun GameScreen(modifier: Modifier = Modifier, viewModel: AppViewModel) {
 
         Text("Current Word Score: $currentScore", fontSize = 22.sp, fontWeight = FontWeight.Bold)
         Text("Total Score: $totalScore", fontSize = 18.sp)
-        Text("Words Built: $numWords", fontSize = 18.sp)
+        Text("Words Built: ${sessionList.size}", fontSize = 18.sp)
         Text("Time Elapsed: $currentTime", fontSize = 22.sp)
 
         Spacer(modifier = Modifier.height(20.dp))
 
         Row(
             horizontalArrangement = Arrangement.SpaceEvenly,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
         ) {
             Button(onClick = { viewModel.shuffleLetters() }) {
                 Text("Reshuffle")
